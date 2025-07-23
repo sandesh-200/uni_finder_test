@@ -1,0 +1,18 @@
+@font-face {
+  font-family: Sora;
+  src: url('../src/assets/fonts/Sora-Regular.ttf');
+}
+
+@font-face {
+  font-family: Sora-Semibold;
+  src: url('../src/assets/fonts/Sora-SemiBold.ttf')
+}
+
+@import "tailwindcss";
+
+@theme{
+  --font-sora-regular : Sora, "sans-serif";
+}
+@theme {
+  --font-sora-semi-bold: Sora-Semibold, 'sans-serif';
+}
