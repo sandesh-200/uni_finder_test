@@ -27,6 +27,21 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Function to detect Docker Compose version
+detect_compose_command() {
+    if command -v docker-compose &> /dev/null; then
+        COMPOSE_CMD="docker-compose"
+        print_status "Using Docker Compose V1"
+    elif docker compose version &> /dev/null; then
+        COMPOSE_CMD="docker compose"
+        print_status "Using Docker Compose V2"
+    else
+        print_error "Docker Compose is not installed. Please install Docker Compose first:"
+        echo "   https://docs.docker.com/compose/install/"
+        exit 1
+    fi
+}
+
 # Function to check system resources
 check_resources() {
     print_status "Checking system resources..."
@@ -56,18 +71,14 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check Docker Compose
-    if ! command -v docker-compose &> /dev/null; then
-        print_error "Docker Compose is not installed. Please install Docker Compose first:"
-        echo "   https://docs.docker.com/compose/install/"
-        exit 1
-    fi
-    
     # Check if Docker is running
     if ! docker info &> /dev/null; then
         print_error "Docker is not running. Please start Docker first."
         exit 1
     fi
+    
+    # Detect Docker Compose version
+    detect_compose_command
     
     print_success "Prerequisites check passed!"
 }
@@ -106,17 +117,17 @@ start_services() {
     echo "   Services will run in containers but be accessible from your device"
     
     # Clean up any existing containers
-    docker-compose down --remove-orphans 2>/dev/null || true
+    $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
     
     # Build and start services with resource limits
-    docker-compose up --build -d
+    $COMPOSE_CMD up --build -d
     
     echo ""
     print_status "Waiting for services to start..."
     sleep 15
     
     # Check if services are running
-    if docker-compose ps | grep -q "Up"; then
+    if $COMPOSE_CMD ps | grep -q "Up"; then
         echo ""
         print_success "System is running!"
         echo ""
@@ -136,27 +147,27 @@ start_services() {
         echo "🎉 Enjoy using the University Recommendation System!"
     else
         print_error "Failed to start services. Check logs:"
-        docker-compose logs
+        $COMPOSE_CMD logs
     fi
 }
 
 # Function to show logs
 show_logs() {
     print_status "Showing logs..."
-    docker-compose logs -f
+    $COMPOSE_CMD logs -f
 }
 
 # Function to stop services
 stop_services() {
     print_status "Stopping services..."
-    docker-compose down
+    $COMPOSE_CMD down
     print_success "Services stopped!"
 }
 
 # Function to restart services
 restart_services() {
     print_status "Restarting services..."
-    docker-compose restart
+    $COMPOSE_CMD restart
     print_success "Services restarted!"
 }
 
@@ -165,7 +176,7 @@ check_status() {
     print_status "Checking service status..."
     echo ""
     echo "Service Status:"
-    docker-compose ps
+    $COMPOSE_CMD ps
     echo ""
     echo "Resource Usage:"
     docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}"
@@ -175,7 +186,7 @@ check_status() {
     echo "  Backend:  http://localhost:8000"
     echo ""
     echo "Service Logs (last 10 lines each):"
-    docker-compose logs --tail=10
+    $COMPOSE_CMD logs --tail=10
 }
 
 # Function to show help
@@ -217,15 +228,19 @@ case "${1:-start}" in
         start_services
         ;;
     "logs")
+        detect_compose_command
         show_logs
         ;;
     "stop")
+        detect_compose_command
         stop_services
         ;;
     "restart")
+        detect_compose_command
         restart_services
         ;;
     "status")
+        detect_compose_command
         check_status
         ;;
     "help"|"-h"|"--help")
