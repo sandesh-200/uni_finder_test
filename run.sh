@@ -124,7 +124,29 @@ start_services() {
     
     echo ""
     print_status "Waiting for services to start..."
-    sleep 15
+    echo "   Backend is running migrations and setting up database..."
+    sleep 10
+    
+    # Wait for backend to be ready (check if migrations are complete)
+    print_status "Checking backend readiness..."
+    local max_attempts=30
+    local attempt=1
+    
+    while [ $attempt -le $max_attempts ]; do
+        if curl -s http://localhost:8000/api/v1/health/ > /dev/null 2>&1; then
+            print_success "Backend is ready!"
+            break
+        elif [ $attempt -eq $max_attempts ]; then
+            print_warning "Backend is taking longer than expected to start."
+            echo "   This is normal for the first run as it's setting up the database."
+            echo "   You can check the logs with: ./run.sh logs"
+            break
+        else
+            echo "   Attempt $attempt/$max_attempts: Backend is still starting..."
+            sleep 5
+            attempt=$((attempt + 1))
+        fi
+    done
     
     # Check if services are running
     if $COMPOSE_CMD ps | grep -q "Up"; then
