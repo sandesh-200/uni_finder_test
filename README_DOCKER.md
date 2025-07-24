@@ -1,6 +1,6 @@
-# 🐳 Docker Setup for Friends
+# 🐳 Docker Setup for University Recommendation System
 
-This is a simple Docker setup to run the University Recommendation System locally.
+A single, efficient Docker setup that runs the system in containers but makes it accessible from your local device.
 
 ## 🚀 Quick Start
 
@@ -15,7 +15,7 @@ git clone <your-repo-url>
 cd university-recommendation-system
 ```
 
-### Step 2: Set Up Environment
+### Step 2: Set Up and Run
 ```bash
 # Make the run script executable
 chmod +x run.sh
@@ -25,10 +25,11 @@ chmod +x run.sh
 ```
 
 The script will:
-- ✅ Check if Docker is installed
+- ✅ Check if Docker is installed and running
+- ✅ Check system resources
 - ✅ Create a `.env` file for you
 - ⚠️ Ask you to add your Google Gemini API key
-- 🚀 Start the system automatically
+- 🚀 Start the system with Docker networking
 
 ### Step 3: Add Your API Key
 1. Get your Google Gemini API key from: https://makersuite.google.com/app/apikey
@@ -54,7 +55,7 @@ The script will:
 # Restart the system
 ./run.sh restart
 
-# Check status
+# Check status and resources
 ./run.sh status
 ```
 
@@ -97,12 +98,18 @@ If ports 3000 or 8000 are already in use:
 1. Stop other services using those ports
 2. Or modify the ports in `docker-compose.yml`
 
+### Resource issues?
+The system uses resource limits to prevent lag:
+- Backend: Max 2GB RAM, 1 CPU core
+- Frontend: Max 512MB RAM, 0.5 CPU core
+
 ## 📁 What's Included
 
 - **Backend**: Django with AI recommendation system
 - **Frontend**: React with modern UI
 - **Cache**: Pre-built vector store for fast recommendations
 - **Dataset**: University data with 25+ fields
+- **Networking**: Docker bridge network for container communication
 
 ## 🎯 Features
 
@@ -110,15 +117,33 @@ If ports 3000 or 8000 are already in use:
 - ✅ Modern React frontend
 - ✅ Fast vector similarity search
 - ✅ Detailed university information
-- ✅ Easy Docker setup
+- ✅ Single command setup
+- ✅ Resource limits to prevent system lag
+- ✅ Docker networking for accessibility
 - ✅ Automatic cache building
+
+## 🌐 Docker Networking
+
+The system uses Docker networking to:
+- **Run services in isolated containers** - Prevents conflicts
+- **Make services accessible from your device** - Access via localhost
+- **Limit resource usage** - Prevents system lag
+- **Enable container communication** - Backend and frontend can talk
 
 ## 🆘 Need Help?
 
 1. Check the logs: `./run.sh logs`
 2. Restart the system: `./run.sh restart`
-3. Make sure your API key is correct
-4. Ensure Docker has enough resources (4GB RAM recommended)
+3. Check status: `./run.sh status`
+4. Make sure your API key is correct
+5. Ensure Docker has enough resources (4GB RAM recommended)
+
+## 💡 Performance Tips
+
+- **First run**: May take longer due to cache building
+- **Subsequent runs**: Much faster due to cached images
+- **Resource monitoring**: Use `./run.sh status` to check resource usage
+- **Memory**: Close other apps if you experience slowdown
 
 ---
 
