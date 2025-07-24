@@ -1,5 +1,5 @@
 import { MdOutlineMailOutline } from "react-icons/md";
-import { FaRegEyeSlash } from "react-icons/fa";
+import { FaRegEyeSlash, FaRegEye } from "react-icons/fa";
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { useAuth } from "../../contexts/AuthContext";
@@ -9,6 +9,8 @@ const LoginMain = () => {
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const [showPassword, setShowPassword] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
     const { login } = useAuth();
@@ -16,21 +18,75 @@ const LoginMain = () => {
     // Get the intended destination from location state, or default to homepage
     const from = location.state?.from?.pathname || "/";
 
+    const clearErrors = () => {
+        setError("");
+        setFieldErrors({});
+    };
+
+    const validateForm = () => {
+        const errors: Record<string, string> = {};
+        
+        // Email validation
+        if (!email.trim()) {
+            errors.email = "Email is required";
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            errors.email = "Please enter a valid email address";
+        }
+        
+        // Password validation
+        if (!password) {
+            errors.password = "Password is required";
+        }
+        
+        setFieldErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        clearErrors();
+        
+        if (!validateForm()) {
+            return;
+        }
+
         setLoading(true);
-        setError("");
 
         try {
-            await login(email, password);
+            await login(email.trim(), password);
             console.log("Login successful");
             
             // Redirect to intended destination or homepage
             navigate(from, { replace: true });
         } catch (err: any) {
+            // Handle field-specific errors from backend
+            if (err.message && err.message.includes('email')) {
+                setFieldErrors({ email: err.message });
+            } else if (err.message && err.message.includes('password')) {
+                setFieldErrors({ password: err.message });
+            } else {
             setError(err.message || "Login failed");
+            }
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleInputChange = (field: 'email' | 'password', value: string) => {
+        if (field === 'email') {
+            setEmail(value);
+        } else {
+            setPassword(value);
+        }
+        
+        // Clear field error when user starts typing
+        if (fieldErrors[field]) {
+            setFieldErrors(prev => ({ ...prev, [field]: '' }));
+        }
+        
+        // Clear general error when user starts typing
+        if (error) {
+            setError("");
         }
     };
 
@@ -66,11 +122,19 @@ const LoginMain = () => {
                             type="email"
                                 id="email"
                                 value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            className="w-full border border-gray-300 py-2 px-4 rounded-lg font-sora-regular focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                onChange={(e) => handleInputChange('email', e.target.value)}
+                                className={`w-full border py-2 px-4 rounded-lg font-sora-regular focus:outline-none focus:ring-2 transition-colors ${
+                                    fieldErrors.email 
+                                        ? 'border-red-500 focus:ring-red-500' 
+                                        : 'border-gray-300 focus:ring-blue-500'
+                                }`}
                             placeholder="Enter your Email"
                                 required
+                                disabled={loading}
                         />
+                            {fieldErrors.email && (
+                                <p className="text-red-500 text-sm">{fieldErrors.email}</p>
+                            )}
                     </div>
 
                     {/* Password Input */}
@@ -79,15 +143,33 @@ const LoginMain = () => {
                             <FaRegEyeSlash size={20} />
                             <span className="text-base font-sora-semi-bold">Password</span>
                         </label>
+                            <div className="relative">
                         <input
-                            type="password"
+                                    type={showPassword ? "text" : "password"}
                                 id="password"
                                 value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            className="w-full border border-gray-300 py-2 px-4 rounded-lg font-sora-regular focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    onChange={(e) => handleInputChange('password', e.target.value)}
+                                    className={`w-full border py-2 px-4 pr-10 rounded-lg font-sora-regular focus:outline-none focus:ring-2 transition-colors ${
+                                        fieldErrors.password 
+                                            ? 'border-red-500 focus:ring-red-500' 
+                                            : 'border-gray-300 focus:ring-blue-500'
+                                    }`}
                             placeholder="Enter your password"
                                 required
+                                    disabled={loading}
                         />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                                    disabled={loading}
+                                >
+                                    {showPassword ? <FaRegEye size={16} /> : <FaRegEyeSlash size={16} />}
+                                </button>
+                            </div>
+                            {fieldErrors.password && (
+                                <p className="text-red-500 text-sm">{fieldErrors.password}</p>
+                            )}
                     </div>
 
                     {/* Login Button */}

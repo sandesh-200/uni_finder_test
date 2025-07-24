@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: uni_backend
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=dev-secret-key-for-friends
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
+    volumes:
+      - ./backend:/app
+      - vector_cache:/app/vector_store_cache
+    ports:
+      - "8000:8000"
+    networks:
+      - uni_network
+    restart: unless-stopped
+
+  # Frontend Service
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: uni_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - uni_network
+    restart: unless-stopped
+
+volumes:
+  vector_cache:
+    driver: local
+
+networks:
+  uni_network:
+    driver: bridge 

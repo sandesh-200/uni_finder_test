@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { logger } from '../utils/logger';
 
 // API Configuration
 const API_BASE_URL = 'http://localhost:8000/api/v1';
@@ -27,13 +28,17 @@ axios.interceptors.response.use(
   (error) => {
     if (error.response?.status === 503) {
       // System is initializing
-      console.warn('System is initializing, retrying in 30 seconds...');
+      logger.warn('System is initializing, please wait...');
+    } else if (error.response?.status === 500) {
+      logger.error('Server error:', error.response.data);
+    } else if (error.code === 'ECONNREFUSED') {
+      logger.error('Cannot connect to server. Please check if the backend is running.');
     }
     return Promise.reject(error);
   }
 );
 
-// Types
+// Type definitions
 export interface AvailableOptions {
   programs: string[];
   countries: string[];
@@ -68,22 +73,34 @@ export interface UniversityRecommendation {
   program_duration?: string;
   application_deadline?: string;
   language_requirements?: string;
-}
-
-export interface SystemHealth {
-  status: 'operational' | 'initializing' | 'error';
-  message: string;
-  cache_status: 'ready' | 'building' | 'error';
-  ready: boolean;
-  cache_exists?: boolean;
-  programs_count?: number;
+  // Additional fields that might be available
+  course_name?: string;
+  parent_course?: string;
+  course_program_label?: string;
+  university_id?: string;
+  course_id?: string;
+  university_slug?: string;
+  program_level?: string;
+  program_type?: string;
+  credential?: string;
+  tuition_local?: number;
+  university_type?: string;
+  currency?: string;
+  is_partner?: boolean;
+  is_published?: boolean;
+  university_views?: number;
+  scholarship_count?: number;
+  is_gre_required?: string;
+  tuition_affordability?: number;
+  university_quality?: number;
+  country_popularity?: number;
+  similarity_score?: number;
+  relevance_score?: number;
 }
 
 // API Service
 class ApiService {
   private baseURL: string;
-  private healthCheckInterval: number | null = null;
-  private isSystemReady = false;
 
   constructor() {
     this.baseURL = API_BASE_URL;
@@ -94,148 +111,37 @@ class ApiService {
     return token ? { 'Authorization': `Token ${token}` } : {};
   }
 
-  // Health check to verify system status
-  async checkSystemHealth(): Promise<SystemHealth> {
-    try {
-      const response = await axios.get(`${this.baseURL}/health/`);
-      this.isSystemReady = response.data.ready;
-      return response.data;
-    } catch (error) {
-      console.error('Health check failed:', error);
-      return {
-        status: 'error',
-        message: 'Unable to connect to system',
-        cache_status: 'error',
-        ready: false
-      };
-    }
-  }
-
-  // Wait for system to be ready with retry logic
-  async waitForSystemReady(maxAttempts = 20, delayMs = 30000): Promise<boolean> {
-    console.log('🔄 Checking if system is ready...');
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const health = await this.checkSystemHealth();
-        
-        if (health.ready) {
-          console.log('✅ System is ready!');
-          this.isSystemReady = true;
-          return true;
-        }
-        
-        console.log(`⏳ System is still initializing (attempt ${attempt}/${maxAttempts})...`);
-        console.log(`📊 Status: ${health.status}, Cache: ${health.cache_status}`);
-        
-        if (attempt < maxAttempts) {
-          console.log(`⏰ Waiting ${delayMs/1000} seconds before next check...`);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-      } catch (error) {
-        console.error(`❌ Health check attempt ${attempt} failed:`, error);
-        if (attempt < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-      }
-    }
-    
-    console.error('❌ System failed to initialize within expected time');
-    return false;
-  }
-
-  // Start periodic health checks
-  startHealthMonitoring() {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-    }
-    
-    this.healthCheckInterval = setInterval(async () => {
-      try {
-        const health = await this.checkSystemHealth();
-        this.isSystemReady = health.ready;
-      } catch (error) {
-        console.error('Health monitoring error:', error);
-        this.isSystemReady = false;
-      }
-    }, 60000); // Check every minute
-  }
-
-  // Stop health monitoring
-  stopHealthMonitoring() {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = null;
-    }
-  }
-
-  // Get available options for dropdowns
   async getAvailableOptions(): Promise<AvailableOptions> {
     try {
-      // Check if system is ready first
-      if (!this.isSystemReady) {
-        const isReady = await this.waitForSystemReady();
-        if (!isReady) {
-          throw new Error('System is not ready. Please try again in a few minutes.');
-        }
-      }
-
-      const response = await axios.get(`${this.baseURL}/available-options/`);
+      const response = await axios.get('/available-options/');
       return response.data;
     } catch (error: any) {
-      if (error.response?.status === 503) {
-        throw new Error('System is still initializing. Please wait a few minutes and try again.');
-      }
-      console.error('Error fetching available options:', error);
+      logger.error('Failed to fetch available options:', error);
       throw new Error(error.response?.data?.message || 'Failed to load available options');
     }
   }
 
-  // Get university recommendations
   async getRecommendations(preferences: UserPreferences): Promise<{ recommendations: UniversityRecommendation[]; search_duration_ms: number; submission_id?: number }> {
     try {
-      // Check if system is ready first
-      if (!this.isSystemReady) {
-        const isReady = await this.waitForSystemReady();
-        if (!isReady) {
-          throw new Error('System is not ready. Please try again in a few minutes.');
-        }
-      }
-
-      const response = await axios.post(`${this.baseURL}/recommendations/`, preferences, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...this.getAuthHeaders()
-        }
-      });
+      const response = await axios.post('/recommendations/', preferences);
       return response.data;
     } catch (error: any) {
-      if (error.response?.status === 503) {
-        throw new Error('System is still initializing. Please wait a few minutes and try again.');
-      }
-      console.error('Error fetching recommendations:', error);
+      logger.error('Failed to get recommendations:', error);
       throw new Error(error.response?.data?.message || 'Failed to get recommendations');
     }
   }
 
-  // Get user submissions (search history)
   async getUserSubmissions(): Promise<{ submissions: any[] }> {
     try {
-      const response = await axios.get(`${this.baseURL}/user-submissions/`, {
-        headers: this.getAuthHeaders()
-      });
+      const response = await axios.get('/user-submissions/');
       return response.data;
     } catch (error: any) {
-      console.error('Error fetching user submissions:', error);
-      throw new Error(error.response?.data?.message || 'Failed to load search history');
+      logger.error('Failed to fetch user submissions:', error);
+      throw new Error(error.response?.data?.message || 'Failed to load user submissions');
     }
-  }
-
-  // Check if system is currently ready
-  isReady(): boolean {
-    return this.isSystemReady;
   }
 }
 
+// Create and export a singleton instance
 const apiService = new ApiService();
 export default apiService; 

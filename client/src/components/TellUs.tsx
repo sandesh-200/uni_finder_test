@@ -6,7 +6,7 @@ import { BsFileEarmarkSlides } from "react-icons/bs";
 import apiService from "../services/api";
 import type { UserPreferences, UniversityRecommendation, AvailableOptions } from "../services/api";
 import SearchableDropdown from "./SearchableDropdown";
-import SystemStatus from "./SystemStatus";
+import { logger } from "../utils/logger";
 
 const dropdownClasses =
   "flex items-center border border-[#CBD5E1] rounded-lg px-4 py-2 gap-2 bg-white relative w-full shadow-sm";
@@ -32,7 +32,6 @@ const TellUs = () => {
     previous_courses: []
   });
   const [error, setError] = useState("");
-  const [systemReady, setSystemReady] = useState(false);
 
   // Static degree levels since they're not in the API response
   const degreeLevels = ['Bachelor', 'Master', 'PhD', 'Diploma', 'Certificate'];
@@ -40,12 +39,10 @@ const TellUs = () => {
   // Ref for the recommendations section
   const recommendationsRef = useRef<HTMLDivElement>(null);
 
-  // Load available options when system is ready
+  // Load available options on component mount
   useEffect(() => {
-    if (systemReady) {
-      loadAvailableOptions();
-    }
-  }, [systemReady]);
+    loadAvailableOptions();
+  }, []);
 
   const loadAvailableOptions = async () => {
     try {
@@ -53,7 +50,7 @@ const TellUs = () => {
       const options = await apiService.getAvailableOptions();
       setAvailableOptions(options);
     } catch (error: any) {
-      console.error('Failed to load available options:', error);
+      logger.error('Failed to load available options:', error);
       setError(error.message || 'Failed to load available options. Please try again.');
     }
   };
@@ -71,11 +68,6 @@ const TellUs = () => {
   const handleSubmit = async () => {
     if (!degree || !course || !country) {
       setError('Please fill in all required fields.');
-      return;
-    }
-
-    if (!systemReady) {
-      setError('System is not ready yet. Please wait for initialization to complete.');
       return;
     }
 
@@ -98,31 +90,23 @@ const TellUs = () => {
       setRecommendations(results.recommendations);
       setSubmitted(true);
       
-      // Log submission details
-      console.log('Search completed:', {
+      // Log submission details for monitoring
+      logger.info('Search completed:', {
         duration: results.search_duration_ms,
         submissionId: results.submission_id,
         recommendationsCount: results.recommendations.length
       });
     } catch (error: any) {
-      console.error('Error getting recommendations:', error);
+      logger.error('Error getting recommendations:', error);
       setError(error.message || 'Failed to get recommendations. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSystemReady = () => {
-    setSystemReady(true);
-    setError(""); // Clear any previous errors
-  };
-
   return (
     <div className="min-h-screen bg-[#F9FAFB] py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* System Status */}
-        <SystemStatus onSystemReady={handleSystemReady} showDetailedStatus={true} />
-
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Left: Form */}
           <div className="w-full lg:w-1/2">
@@ -143,7 +127,6 @@ const TellUs = () => {
                       value={degree}
                       onChange={(e) => setDegree(e.target.value)}
                       className={selectClasses}
-                      disabled={!systemReady}
                     >
                       <option value="">Select degree level</option>
                       {degreeLevels.map((level) => (
@@ -166,7 +149,7 @@ const TellUs = () => {
                     value={course}
                     onChange={setCourse}
                     placeholder="Search for a course..."
-                    disabled={!systemReady || availableOptions.programs.length === 0}
+                    disabled={availableOptions.programs.length === 0}
                   />
                 </div>
 
@@ -180,7 +163,7 @@ const TellUs = () => {
                     value={country}
                     onChange={setCountry}
                     placeholder="Search for a country..."
-                    disabled={!systemReady || availableOptions.countries.length === 0}
+                    disabled={availableOptions.countries.length === 0}
                   />
                 </div>
 
@@ -194,7 +177,7 @@ const TellUs = () => {
                     value={prevDegree}
                     onChange={setPrevDegree}
                     placeholder="Search for a degree..."
-                    disabled={!systemReady || availableOptions.previous_degrees.length === 0}
+                    disabled={availableOptions.previous_degrees.length === 0}
                   />
                 </div>
 
@@ -208,7 +191,7 @@ const TellUs = () => {
                     value={prevCourse}
                     onChange={setPrevCourse}
                     placeholder="Search for a course..."
-                    disabled={!systemReady || availableOptions.previous_courses.length === 0}
+                    disabled={availableOptions.previous_courses.length === 0}
                   />
                 </div>
 
@@ -228,7 +211,6 @@ const TellUs = () => {
                       onChange={(e) => setCgpa(e.target.value)}
                       placeholder="Enter your CGPA (0-4)"
                       className="w-full bg-transparent text-sm text-[#1E293B] font-sora-regular outline-none"
-                      disabled={!systemReady}
                     />
                   </div>
                 </div>
@@ -246,7 +228,6 @@ const TellUs = () => {
                       onChange={(e) => setBudget(e.target.value)}
                       placeholder="Enter your budget in USD"
                       className="w-full bg-transparent text-sm text-[#1E293B] font-sora-regular outline-none"
-                      disabled={!systemReady}
                     />
                   </div>
                 </div>
@@ -259,15 +240,14 @@ const TellUs = () => {
 
                 <button
                   onClick={handleSubmit}
-                  disabled={loading || !systemReady}
+                  disabled={loading}
                   className={`mt-6 w-full py-3 rounded-full font-medium transition-all cursor-pointer ${
-                    loading || !systemReady
+                    loading
                       ? 'bg-gray-400 cursor-not-allowed text-white' 
                       : 'bg-[#3B82F6] hover:bg-[#2563EB] text-white'
                   }`}
                 >
-                  {loading ? 'Finding Universities...' : 
-                   !systemReady ? 'System Initializing...' : 'Find Universities'}
+                  {loading ? 'Finding Universities...' : 'Find Universities'}
                 </button>
               </div>
             </div>
@@ -305,7 +285,7 @@ const TellUs = () => {
                   </div>
                   
                   <div className="space-y-2 text-sm text-[#64748B]">
-                    <p><span className="font-medium">Program:</span> {recommendation.program_name}</p>
+                    <p><span className="font-medium">Program:</span> {recommendation.program_name || recommendation.course_name || recommendation.parent_course || 'Not specified'}</p>
                     <p><span className="font-medium">Country:</span> {recommendation.country}</p>
                     {recommendation.tuition_fee_usd && (
                       <p><span className="font-medium">Tuition:</span> ${recommendation.tuition_fee_usd.toLocaleString()}</p>
@@ -317,7 +297,7 @@ const TellUs = () => {
                   
                   <div className="mt-4 p-3 bg-gray-50 rounded text-sm">
                     <p className="font-medium text-[#374151] mb-1">Why this university?</p>
-                    <p className="text-[#64748B]">{recommendation.reasoning}</p>
+                    <p className="text-[#64748B]">{recommendation.reasoning || 'This university matches your preferences based on program, location, and cost factors.'}</p>
                   </div>
                 </div>
               ))}

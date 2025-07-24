@@ -26,6 +26,7 @@ export interface UserProfile {
 }
 
 export interface LoginResponse {
+    success: boolean;
     message: string;
     user: User;
     token: string;
@@ -42,8 +43,18 @@ export interface RegisterData {
 }
 
 export interface AuthStatus {
+    success: boolean;
     authenticated: boolean;
     user?: User;
+    message?: string;
+    error?: string;
+}
+
+export interface ApiError {
+    success: false;
+    message: string;
+    errors?: Record<string, string>;
+    error_type?: string;
     error?: string;
 }
 
@@ -75,15 +86,53 @@ class AuthService {
         };
     }
 
+    private handleApiError(error: any): never {
+        if (error.response?.data) {
+            const apiError: ApiError = error.response.data;
+            
+            // Handle field-specific errors
+            if (apiError.errors && Object.keys(apiError.errors).length > 0) {
+                const errorMessages = Object.values(apiError.errors).join('. ');
+                throw new Error(errorMessages);
+            }
+            
+            // Handle general error messages
+            if (apiError.message) {
+                throw new Error(apiError.message);
+            }
+        }
+        
+        // Fallback error messages
+        if (error.response?.status === 400) {
+            throw new Error('Invalid request. Please check your input and try again.');
+        } else if (error.response?.status === 401) {
+            throw new Error('Authentication failed. Please login again.');
+        } else if (error.response?.status === 403) {
+            throw new Error('Access denied. You do not have permission to perform this action.');
+        } else if (error.response?.status === 404) {
+            throw new Error('Resource not found. Please check your request.');
+        } else if (error.response?.status === 500) {
+            throw new Error('Server error. Please try again later.');
+        } else if (error.code === 'ECONNREFUSED') {
+            throw new Error('Cannot connect to server. Please check your internet connection.');
+        } else if (error.code === 'NETWORK_ERROR') {
+            throw new Error('Network error. Please check your internet connection.');
+        } else {
+            throw new Error('An unexpected error occurred. Please try again.');
+        }
+    }
+
     async register(data: RegisterData): Promise<LoginResponse> {
         try {
             const response = await axios.post(`${API_BASE_URL}/register/`, data);
-            if (response.data.token) {
+            
+            if (response.data.success && response.data.token) {
                 this.setToken(response.data.token);
             }
+            
             return response.data;
         } catch (error: any) {
-            throw new Error(error.response?.data?.message || 'Registration failed');
+            this.handleApiError(error);
         }
     }
 
@@ -93,12 +142,14 @@ class AuthService {
                 email,
                 password
             });
-            if (response.data.token) {
+            
+            if (response.data.success && response.data.token) {
                 this.setToken(response.data.token);
             }
+            
             return response.data;
         } catch (error: any) {
-            throw new Error(error.response?.data?.message || 'Login failed');
+            this.handleApiError(error);
         }
     }
 
@@ -121,7 +172,7 @@ class AuthService {
             });
             return response.data.user;
         } catch (error: any) {
-            throw new Error(error.response?.data?.message || 'Failed to get profile');
+            this.handleApiError(error);
         }
     }
 
@@ -132,7 +183,7 @@ class AuthService {
             });
             return response.data.user;
         } catch (error: any) {
-            throw new Error(error.response?.data?.message || 'Failed to update profile');
+            this.handleApiError(error);
         }
     }
 
@@ -147,7 +198,7 @@ class AuthService {
             });
             this.clearToken(); // Force re-login
         } catch (error: any) {
-            throw new Error(error.response?.data?.message || 'Failed to change password');
+            this.handleApiError(error);
         }
     }
 
@@ -156,7 +207,7 @@ class AuthService {
             const response = await axios.post(`${API_BASE_URL}/password/reset/`, { email });
             return response.data;
         } catch (error: any) {
-            throw new Error(error.response?.data?.message || 'Failed to request password reset');
+            this.handleApiError(error);
         }
     }
 
@@ -168,7 +219,7 @@ class AuthService {
                 confirm_password: confirmPassword
             });
         } catch (error: any) {
-            throw new Error(error.response?.data?.message || 'Failed to confirm password reset');
+            this.handleApiError(error);
         }
     }
 
@@ -179,7 +230,11 @@ class AuthService {
             });
             return response.data;
         } catch (error: any) {
-            return { authenticated: false };
+            return { 
+                success: false,
+                authenticated: false,
+                message: 'Authentication check failed'
+            };
         }
     }
 
