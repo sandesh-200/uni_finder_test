@@ -82,13 +82,22 @@ class UniversityRecommendationService:
                 Global Rank: {row.get('university_global_rank', 'N/A')}
                 Tuition (USD): ${row.get('university_course_tuition_usd', 'N/A')}
                 University Type: {row.get('university_type', 'N/A')}
+                Currency: {row.get('country_currency', 'N/A')}
+                Scholarship Count: {row.get('scholarship_count', 'N/A')}
+                GRE Required: {row.get('is_gre_required', 'N/A')}
+                University Views: {row.get('university_views', 'N/A')}
+                Tuition Affordability: {row.get('tuition_affordability', 'N/A')}
+                University Quality: {row.get('university_quality', 'N/A')}
+                Country Popularity: {row.get('country_popularity', 'N/A')}
                 """
                 
                 metadata = {
                     'university_id': row.get('university_id'),
                     'course_id': row.get('university_course_id'),
                     'university_name': row.get('university_name'),
+                    'university_slug': row.get('university_slug'),
                     'course_name': row.get('university_course_name'),
+                    'course_program_label': row.get('course_program_label'),
                     'program_level': row.get('program_level'),
                     'program_type': row.get('program_type'),
                     'credential': row.get('university_courses_credential'),
@@ -97,9 +106,23 @@ class UniversityRecommendationService:
                     'country': row.get('country_name'),
                     'global_rank': row.get('university_global_rank'),
                     'tuition_usd': row.get('university_course_tuition_usd'),
+                    'tuition_local': row.get('university_course_tuition_local'),
                     'university_type': row.get('university_type'),
                     'currency': row.get('country_currency'),
+                    'is_partner': row.get('is_partner'),
+                    'is_published': row.get('is_published'),
+                    'university_views': row.get('university_views'),
+                    'scholarship_count': row.get('scholarship_count'),
+                    'is_gre_required': row.get('is_gre_required'),
+                    'tuition_affordability': row.get('tuition_affordability'),
+                    'university_quality': row.get('university_quality'),
+                    'country_popularity': row.get('country_popularity'),
                 }
+                
+                # Log any missing critical fields for debugging
+                missing_fields = [key for key, value in metadata.items() if value is None]
+                if missing_fields:
+                    logger.warning(f"Missing fields for university {metadata.get('university_name', 'Unknown')}: {missing_fields}")
                 
                 doc = Document(page_content=text, metadata=metadata)
                 documents.append(doc)
@@ -139,7 +162,6 @@ class UniversityRecommendationService:
             query_start = time.time()
             query = self._create_query_from_preferences(user_preferences)
             query_duration = time.time() - query_start
-            logger.debug(f"🔍 Query created in {query_duration:.3f}s: {query}")
             
             # Get similar documents from vector store
             vector_start = time.time()
@@ -154,8 +176,6 @@ class UniversityRecommendationService:
             recommendations = []
             
             for i, (doc, score) in enumerate(similar_docs):
-                logger.debug(f"📝 Processing recommendation {i+1}/{len(similar_docs)}: {doc.metadata['university_name']}")
-                
                 # Calculate match percentage based on preferences
                 match_start = time.time()
                 match_percentage = self._calculate_match_percentage(doc.metadata, user_preferences)
@@ -167,16 +187,31 @@ class UniversityRecommendationService:
                 reasoning_duration = time.time() - reasoning_start
                 
                 recommendation = {
-                    'course_id': doc.metadata['course_id'],
-                    'university_name': doc.metadata['university_name'],
-                    'course_name': doc.metadata['course_name'],
-                    'program_type': doc.metadata['program_type'],
-                    'credential': doc.metadata['credential'],
-                    'location': doc.metadata['location'],
-                    'country': doc.metadata['country'],
-                    'global_rank': doc.metadata['global_rank'],
-                    'tuition_usd': doc.metadata['tuition_usd'],
-                    'university_type': doc.metadata['university_type'],
+                    'course_id': doc.metadata.get('course_id'),
+                    'university_id': doc.metadata.get('university_id'),
+                    'university_name': doc.metadata.get('university_name'),
+                    'university_slug': doc.metadata.get('university_slug'),
+                    'course_name': doc.metadata.get('course_name'),
+                    'course_program_label': doc.metadata.get('course_program_label'),
+                    'program_level': doc.metadata.get('program_level'),
+                    'program_type': doc.metadata.get('program_type'),
+                    'credential': doc.metadata.get('credential'),
+                    'parent_course': doc.metadata.get('parent_course'),
+                    'location': doc.metadata.get('location'),
+                    'country': doc.metadata.get('country'),
+                    'global_rank': doc.metadata.get('global_rank'),
+                    'tuition_usd': doc.metadata.get('tuition_usd'),
+                    'tuition_local': doc.metadata.get('tuition_local'),
+                    'university_type': doc.metadata.get('university_type'),
+                    'currency': doc.metadata.get('currency'),
+                    'is_partner': doc.metadata.get('is_partner'),
+                    'is_published': doc.metadata.get('is_published'),
+                    'university_views': doc.metadata.get('university_views'),
+                    'scholarship_count': doc.metadata.get('scholarship_count'),
+                    'is_gre_required': doc.metadata.get('is_gre_required'),
+                    'tuition_affordability': doc.metadata.get('tuition_affordability'),
+                    'university_quality': doc.metadata.get('university_quality'),
+                    'country_popularity': doc.metadata.get('country_popularity'),
                     'similarity_score': float(score),
                     'match_percentage': match_percentage,
                     'llm_reasoning': llm_reasoning,
@@ -197,6 +232,9 @@ class UniversityRecommendationService:
             
         except Exception as e:
             logger.error(f"❌ Error getting recommendations: {e}")
+            logger.error(f"❌ Error details: {type(e).__name__}")
+            import traceback
+            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
             return []
     
     def _create_query_from_preferences(self, preferences: Dict[str, Any]) -> str:
@@ -238,37 +276,37 @@ class UniversityRecommendationService:
         # Program match
         if preferences.get('desired_program'):
             total_points += 25
-            if preferences['desired_program'].lower() in course_metadata['parent_course'].lower():
+            if course_metadata.get('parent_course') and preferences['desired_program'].lower() in course_metadata['parent_course'].lower():
                 match_points += 25
-            elif preferences['desired_program'].lower() in course_metadata['course_name'].lower():
+            elif course_metadata.get('course_name') and preferences['desired_program'].lower() in course_metadata['course_name'].lower():
                 match_points += 20
         
         # Program level match
         if preferences.get('program_level'):
             total_points += 15
-            if preferences['program_level'].lower() in course_metadata['program_type'].lower():
+            if course_metadata.get('program_type') and preferences['program_level'].lower() in course_metadata['program_type'].lower():
                 match_points += 15
         
         # Location match
         if preferences.get('preferred_countries'):
             total_points += 20
-            if course_metadata['country'] in preferences['preferred_countries']:
+            if course_metadata.get('country') and course_metadata['country'] in preferences['preferred_countries']:
                 match_points += 20
         
         # University type match
         if preferences.get('university_types'):
             total_points += 15
-            if course_metadata['university_type'] in preferences['university_types']:
+            if course_metadata.get('university_type') and course_metadata['university_type'] in preferences['university_types']:
                 match_points += 15
         
         # Tuition match
-        if preferences.get('max_tuition_usd') and course_metadata['tuition_usd']:
+        if preferences.get('max_tuition_usd') and course_metadata.get('tuition_usd'):
             total_points += 15
             if course_metadata['tuition_usd'] <= preferences['max_tuition_usd']:
                 match_points += 15
         
         # Global rank match
-        if preferences.get('min_global_rank') and course_metadata['global_rank']:
+        if preferences.get('min_global_rank') and course_metadata.get('global_rank'):
             total_points += 10
             if course_metadata['global_rank'] <= preferences['min_global_rank']:
                 match_points += 10
@@ -281,20 +319,48 @@ class UniversityRecommendationService:
         reasons = []
         
         # Program match
-        if preferences.get('desired_program') and preferences['desired_program'].lower() in course_metadata['parent_course'].lower():
+        if preferences.get('desired_program') and course_metadata.get('parent_course') and preferences['desired_program'].lower() in course_metadata['parent_course'].lower():
             reasons.append(f"Perfect program match: {preferences['desired_program']}")
         
         # Location match
-        if preferences.get('preferred_countries') and course_metadata['country'] in preferences['preferred_countries']:
+        if preferences.get('preferred_countries') and course_metadata.get('country') and course_metadata['country'] in preferences['preferred_countries']:
             reasons.append(f"Located in your preferred country: {course_metadata['country']}")
         
         # Tuition match
-        if preferences.get('max_tuition_usd') and course_metadata['tuition_usd'] and course_metadata['tuition_usd'] <= preferences['max_tuition_usd']:
+        if preferences.get('max_tuition_usd') and course_metadata.get('tuition_usd') and course_metadata['tuition_usd'] <= preferences['max_tuition_usd']:
             reasons.append(f"Within your budget: ${course_metadata['tuition_usd']:,.0f}")
         
         # Rank match
-        if preferences.get('min_global_rank') and course_metadata['global_rank'] and course_metadata['global_rank'] <= preferences['min_global_rank']:
+        if preferences.get('min_global_rank') and course_metadata.get('global_rank') and course_metadata['global_rank'] <= preferences['min_global_rank']:
             reasons.append(f"Meets your ranking criteria: #{course_metadata['global_rank']}")
+        
+        # University type match
+        if preferences.get('university_types') and course_metadata.get('university_type') and course_metadata['university_type'] in preferences['university_types']:
+            reasons.append(f"University type matches: {course_metadata['university_type']}")
+        
+        # Scholarship information
+        if course_metadata.get('scholarship_count') and course_metadata['scholarship_count'] > 0:
+            reasons.append(f"Offers {course_metadata['scholarship_count']} scholarship opportunities")
+        
+        # GRE requirement
+        if course_metadata.get('is_gre_required') and course_metadata['is_gre_required'] != 'NA':
+            reasons.append(f"GRE requirement: {course_metadata['is_gre_required']}")
+        
+        # University quality
+        if course_metadata.get('university_quality'):
+            quality_score = course_metadata['university_quality']
+            if quality_score > 0.8:
+                reasons.append("High university quality score")
+            elif quality_score > 0.6:
+                reasons.append("Good university quality score")
+        
+        # Tuition affordability
+        if course_metadata.get('tuition_affordability'):
+            affordability = course_metadata['tuition_affordability']
+            if affordability > 0.7:
+                reasons.append("Highly affordable tuition")
+            elif affordability > 0.5:
+                reasons.append("Moderately affordable tuition")
         
         if reasons:
             reasoning = f"This course matches {match_percentage:.1f}% of your preferences. Key factors: {'; '.join(reasons)}."
@@ -308,80 +374,36 @@ class UniversityRecommendationService:
         if not self.university_data:
             return []
         
-        programs = set()
+        # Count program frequencies to determine popularity
+        program_counts = {}
         for item in self.university_data:
             if item.get('parent_course_name'):
-                programs.add(item['parent_course_name'])
+                program = item['parent_course_name']
+                program_counts[program] = program_counts.get(program, 0) + 1
         
-        # Convert to list and prioritize popular programs
-        all_programs = list(programs)
+        # Sort by frequency (popularity) and then alphabetically
+        sorted_programs = sorted(program_counts.items(), key=lambda x: (-x[1], x[0]))
         
-        # Define popular programs to prioritize
-        popular_programs = [
-            'Computer Science', 'Business Administration', 'Engineering', 
-            'Medicine', 'Law', 'Psychology', 'Economics', 'Mathematics',
-            'Physics', 'Chemistry', 'Biology', 'History', 'English',
-            'Political Science', 'Sociology', 'Art', 'Music', 'Education'
-        ]
-        
-        # Separate popular and other programs
-        popular_found = []
-        other_programs = []
-        
-        for program in all_programs:
-            if any(popular.lower() in program.lower() for popular in popular_programs):
-                popular_found.append(program)
-            else:
-                other_programs.append(program)
-        
-        # Sort popular programs first, then others
-        popular_found.sort()
-        other_programs.sort()
-        
-        # Return popular programs first, then a mix of others
-        result = popular_found + other_programs[:50]  # Limit to avoid overwhelming the dropdown
-        
-        return result
+        # Return all programs sorted by popularity
+        return [program for program, count in sorted_programs]
     
     def get_available_countries(self) -> List[str]:
         """Get list of available countries with better variety"""
         if not self.university_data:
             return []
         
-        countries = set()
+        # Count country frequencies to determine popularity
+        country_counts = {}
         for item in self.university_data:
             if item.get('country_name'):
-                countries.add(item['country_name'])
+                country = item['country_name']
+                country_counts[country] = country_counts.get(country, 0) + 1
         
-        # Convert to list and prioritize popular countries
-        all_countries = list(countries)
+        # Sort by frequency (popularity) and then alphabetically
+        sorted_countries = sorted(country_counts.items(), key=lambda x: (-x[1], x[0]))
         
-        # Define popular countries to prioritize
-        popular_countries = [
-            'United States', 'Canada', 'United Kingdom', 'Australia', 
-            'Germany', 'France', 'Netherlands', 'Sweden', 'Switzerland',
-            'Singapore', 'Japan', 'South Korea', 'New Zealand', 'Ireland',
-            'Denmark', 'Norway', 'Finland', 'Belgium', 'Austria'
-        ]
-        
-        # Separate popular and other countries
-        popular_found = []
-        other_countries = []
-        
-        for country in all_countries:
-            if country in popular_countries:
-                popular_found.append(country)
-            else:
-                other_countries.append(country)
-        
-        # Sort popular countries first, then others
-        popular_found.sort()
-        other_countries.sort()
-        
-        # Return popular countries first, then all others
-        result = popular_found + other_countries
-        
-        return result
+        # Return all countries sorted by popularity
+        return [country for country, count in sorted_countries]
     
     def get_available_locations(self) -> List[str]:
         """Get list of available locations"""

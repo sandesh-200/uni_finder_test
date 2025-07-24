@@ -1,13 +1,22 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.core.validators import EmailValidator
+from django.contrib.auth.password_validation import get_default_password_validators
 from .models import User, UserProfile, LoginHistory
+import re
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    """Serializer for user registration"""
+    """Enhanced serializer for user registration with detailed validation"""
     
-    password = serializers.CharField(write_only=True, validators=[validate_password])
+    password = serializers.CharField(
+        write_only=True, 
+        min_length=8,
+        max_length=128,
+        help_text="Password must be at least 8 characters long"
+    )
     confirm_password = serializers.CharField(write_only=True)
     terms_accepted = serializers.BooleanField(required=True)
     
@@ -18,34 +27,123 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'password', 'confirm_password', 'terms_accepted'
         ]
         extra_kwargs = {
-            'first_name': {'required': True},
-            'last_name': {'required': True},
-            'email': {'required': True},
-            'phone_number': {'required': False}
+            'first_name': {
+                'required': True,
+                'min_length': 2,
+                'max_length': 50,
+                'help_text': 'First name must be between 2 and 50 characters'
+            },
+            'last_name': {
+                'required': True,
+                'min_length': 2,
+                'max_length': 50,
+                'help_text': 'Last name must be between 2 and 50 characters'
+            },
+            'email': {
+                'required': True,
+                'help_text': 'Please enter a valid email address'
+            },
+            'phone_number': {
+                'required': False,
+                'help_text': 'Phone number is optional'
+            }
         }
+    
+    def validate_first_name(self, value):
+        """Validate first name"""
+        if not value or len(value.strip()) < 2:
+            raise serializers.ValidationError("First name must be at least 2 characters long")
+        if not re.match(r'^[a-zA-Z\s]+$', value):
+            raise serializers.ValidationError("First name can only contain letters and spaces")
+        return value.strip()
+    
+    def validate_last_name(self, value):
+        """Validate last name"""
+        if not value or len(value.strip()) < 2:
+            raise serializers.ValidationError("Last name must be at least 2 characters long")
+        if not re.match(r'^[a-zA-Z\s]+$', value):
+            raise serializers.ValidationError("Last name can only contain letters and spaces")
+        return value.strip()
+    
+    def validate_email(self, value):
+        """Validate email format and uniqueness"""
+        if not value:
+            raise serializers.ValidationError("Email is required")
+        
+        # Check email format
+        email_validator = EmailValidator()
+        try:
+            email_validator(value)
+        except ValidationError:
+            raise serializers.ValidationError("Please enter a valid email address")
+        
+        # Check if email already exists
+        if User.objects.filter(email=value.lower()).exists():
+            raise serializers.ValidationError("An account with this email already exists")
+        
+        return value.lower().strip()
+    
+    def validate_phone_number(self, value):
+        """Validate phone number format"""
+        if value:
+            # Remove all non-digit characters except +
+            cleaned = re.sub(r'[^\d+]', '', value)
+            if not re.match(r'^\+?1?\d{9,15}$', cleaned):
+                raise serializers.ValidationError(
+                    "Please enter a valid phone number (e.g., +1234567890 or 1234567890)"
+                )
+        return value
+    
+    def validate_password(self, value):
+        """Enhanced password validation with detailed feedback"""
+        try:
+            # Use Django's password validators
+            validate_password(value)
+        except ValidationError as e:
+            # Convert Django validation errors to user-friendly messages
+            error_messages = []
+            for error in e.error_list:
+                if 'too short' in str(error).lower():
+                    error_messages.append("Password must be at least 8 characters long")
+                elif 'too common' in str(error).lower():
+                    error_messages.append("This password is too common. Please choose a more unique password")
+                elif 'numeric' in str(error).lower():
+                    error_messages.append("Password must contain at least one number")
+                elif 'similar' in str(error).lower():
+                    error_messages.append("Password is too similar to your personal information")
+                else:
+                    error_messages.append(str(error))
+            
+            if error_messages:
+                raise serializers.ValidationError(" ".join(error_messages))
+        
+        return value
     
     def validate(self, attrs):
         """Validate registration data"""
+        # Check password confirmation
         if attrs['password'] != attrs['confirm_password']:
-            raise serializers.ValidationError("Passwords don't match")
+            raise serializers.ValidationError({
+                'confirm_password': "Passwords don't match. Please make sure both passwords are identical."
+            })
         
+        # Check terms acceptance
         if not attrs.get('terms_accepted'):
-            raise serializers.ValidationError("You must accept the terms and conditions")
-        
-        # Check if email already exists
-        if User.objects.filter(email=attrs['email']).exists():
-            raise serializers.ValidationError("A user with this email already exists")
+            raise serializers.ValidationError({
+                'terms_accepted': "You must accept the terms and conditions to create an account."
+            })
         
         return attrs
     
     def create(self, validated_data):
-        """Create new user"""
-        validated_data.pop('confirm_password')
-        terms_accepted = validated_data.pop('terms_accepted')
+        """Create new user with enhanced error handling"""
+        try:
+            validated_data.pop('confirm_password')
+            terms_accepted = validated_data.pop('terms_accepted')
         
         # Create user
-        user = User.objects.create_user(
-            username=validated_data['email'],  # Use email as username
+            user = User.objects.create_user(
+                username=validated_data['email'],
             email=validated_data['email'],
             password=validated_data['password'],
             first_name=validated_data['first_name'],
@@ -55,32 +153,66 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         )
         
         # Create user profile
-        UserProfile.objects.create(user=user)
+            UserProfile.objects.create(user=user)
         
-        return user
+            return user
+        except Exception as e:
+            raise serializers.ValidationError(f"Failed to create account: {str(e)}")
 
 
 class UserLoginSerializer(serializers.Serializer):
-    """Serializer for user login"""
+    """Enhanced serializer for user login with detailed error messages"""
     
-    email = serializers.EmailField()
-    password = serializers.CharField()
+    email = serializers.EmailField(
+        help_text="Please enter your email address"
+    )
+    password = serializers.CharField(
+        help_text="Please enter your password"
+    )
+    
+    def validate_email(self, value):
+        """Validate email format"""
+        if not value:
+            raise serializers.ValidationError("Email is required")
+        
+        email_validator = EmailValidator()
+        try:
+            email_validator(value)
+        except ValidationError:
+            raise serializers.ValidationError("Please enter a valid email address")
+        
+        return value.lower().strip()
     
     def validate(self, attrs):
-        """Validate login credentials"""
+        """Validate login credentials with detailed error messages"""
         email = attrs.get('email')
         password = attrs.get('password')
         
-        if email and password:
-            user = authenticate(username=email, password=password)
-            if not user:
-                raise serializers.ValidationError('Invalid email or password')
-            if not user.is_active:
-                raise serializers.ValidationError('User account is disabled')
-            attrs['user'] = user
-        else:
-            raise serializers.ValidationError('Must include email and password')
+        if not email or not password:
+            raise serializers.ValidationError("Both email and password are required")
         
+        # Check if user exists
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError({
+                'email': "No account found with this email address. Please check your email or register a new account."
+            })
+        
+        # Check if user is active
+        if not user.is_active:
+            raise serializers.ValidationError({
+                'email': "This account has been deactivated. Please contact support for assistance."
+            })
+        
+        # Authenticate user
+        user = authenticate(username=email, password=password)
+        if not user:
+            raise serializers.ValidationError({
+                'password': "Incorrect password. Please check your password and try again."
+            })
+        
+        attrs['user'] = user
         return attrs
 
 
@@ -126,16 +258,58 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class PasswordChangeSerializer(serializers.Serializer):
-    """Serializer for password change"""
+    """Enhanced serializer for password change"""
     
     old_password = serializers.CharField(required=True)
-    new_password = serializers.CharField(required=True, validators=[validate_password])
+    new_password = serializers.CharField(
+        required=True, 
+        validators=[validate_password],
+        min_length=8,
+        max_length=128
+    )
     confirm_password = serializers.CharField(required=True)
+    
+    def validate_old_password(self, value):
+        """Validate old password"""
+        if not value:
+            raise serializers.ValidationError("Current password is required")
+        return value
+    
+    def validate_new_password(self, value):
+        """Validate new password with detailed feedback"""
+        try:
+            validate_password(value)
+        except ValidationError as e:
+            error_messages = []
+            for error in e.error_list:
+                if 'too short' in str(error).lower():
+                    error_messages.append("New password must be at least 8 characters long")
+                elif 'too common' in str(error).lower():
+                    error_messages.append("This password is too common. Please choose a more unique password")
+                elif 'numeric' in str(error).lower():
+                    error_messages.append("Password must contain at least one number")
+                elif 'similar' in str(error).lower():
+                    error_messages.append("Password is too similar to your personal information")
+                else:
+                    error_messages.append(str(error))
+            
+            if error_messages:
+                raise serializers.ValidationError(" ".join(error_messages))
+        
+        return value
     
     def validate(self, attrs):
         """Validate password change"""
         if attrs['new_password'] != attrs['confirm_password']:
-            raise serializers.ValidationError("New passwords don't match")
+            raise serializers.ValidationError({
+                'confirm_password': "New passwords don't match. Please make sure both passwords are identical."
+            })
+        
+        if attrs['old_password'] == attrs['new_password']:
+            raise serializers.ValidationError({
+                'new_password': "New password must be different from your current password."
+            })
+        
         return attrs
 
 
@@ -146,22 +320,51 @@ class PasswordResetRequestSerializer(serializers.Serializer):
     
     def validate_email(self, value):
         """Validate email exists"""
-        if not User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("No user found with this email address")
-        return value
+        if not User.objects.filter(email=value.lower()).exists():
+            raise serializers.ValidationError("No account found with this email address. Please check your email or register a new account.")
+        return value.lower().strip()
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    """Serializer for password reset confirmation"""
+    """Enhanced serializer for password reset confirmation"""
     
     token = serializers.CharField()
-    new_password = serializers.CharField(validators=[validate_password])
+    new_password = serializers.CharField(
+        validators=[validate_password],
+        min_length=8,
+        max_length=128
+    )
     confirm_password = serializers.CharField()
+    
+    def validate_new_password(self, value):
+        """Validate new password with detailed feedback"""
+        try:
+            validate_password(value)
+        except ValidationError as e:
+            error_messages = []
+            for error in e.error_list:
+                if 'too short' in str(error).lower():
+                    error_messages.append("New password must be at least 8 characters long")
+                elif 'too common' in str(error).lower():
+                    error_messages.append("This password is too common. Please choose a more unique password")
+                elif 'numeric' in str(error).lower():
+                    error_messages.append("Password must contain at least one number")
+                elif 'similar' in str(error).lower():
+                    error_messages.append("Password is too similar to your personal information")
+                else:
+                    error_messages.append(str(error))
+            
+            if error_messages:
+                raise serializers.ValidationError(" ".join(error_messages))
+        
+        return value
     
     def validate(self, attrs):
         """Validate password reset"""
         if attrs['new_password'] != attrs['confirm_password']:
-            raise serializers.ValidationError("Passwords don't match")
+            raise serializers.ValidationError({
+                'confirm_password': "Passwords don't match. Please make sure both passwords are identical."
+            })
         return attrs
 
 

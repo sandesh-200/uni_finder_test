@@ -6,12 +6,15 @@ from django.http import JsonResponse
 import json
 import time
 import os
+import logging
 from .models import UserSubmission
 from .serializers import (
     AvailableOptionsSerializer, UserSubmissionCreateSerializer
 )
 from .langchain_service_fast import UniversityRecommendationService
 from django.contrib.auth.models import AnonymousUser
+
+logger = logging.getLogger(__name__)
 
 
 def get_recommendation_service():
@@ -20,7 +23,7 @@ def get_recommendation_service():
         try:
             get_recommendation_service._service = UniversityRecommendationService()
         except Exception as e:
-            print(f"Error initializing recommendation service: {e}")
+            logger.error(f"Error initializing recommendation service: {e}")
             get_recommendation_service._service = None
     return get_recommendation_service._service
 
@@ -62,6 +65,7 @@ def health_check(request):
         })
         
     except Exception as e:
+        logger.error(f"System error in health_check: {str(e)}")
         return Response({
             'status': 'error',
             'message': f'System error: {str(e)}',
@@ -111,31 +115,70 @@ def get_recommendations(request):
             # Save the submission with user
             submission = submission_serializer.save(user=request.user)
         else:
-            print(f"Submission validation errors: {submission_serializer.errors}")
+            logger.warning(f"Submission validation errors: {submission_serializer.errors}")
         
         # Get recommendations from service
         recommendations = service.get_recommendations(data)
+        
+        # Transform recommendations to match frontend expectations
+        transformed_recommendations = []
+        for rec in recommendations:
+            transformed_rec = {
+                'university_name': rec.get('university_name', ''),
+                'program_name': rec.get('course_name') or rec.get('parent_course') or rec.get('course_program_label', ''),
+                'country': rec.get('country', ''),
+                'tuition_fee_usd': rec.get('tuition_usd'),
+                'global_rank': rec.get('global_rank'),
+                'match_percentage': rec.get('match_percentage', 0),
+                'reasoning': rec.get('llm_reasoning', ''),
+                'location': rec.get('location', ''),
+                'program_duration': rec.get('credential', ''),
+                'application_deadline': None,  # Not available in current dataset
+                'language_requirements': None,  # Not available in current dataset
+                # Include additional fields for future use
+                'university_id': rec.get('university_id'),
+                'course_id': rec.get('course_id'),
+                'university_slug': rec.get('university_slug'),
+                'course_program_label': rec.get('course_program_label'),
+                'program_level': rec.get('program_level'),
+                'program_type': rec.get('program_type'),
+                'parent_course': rec.get('parent_course'),
+                'tuition_local': rec.get('tuition_local'),
+                'university_type': rec.get('university_type'),
+                'currency': rec.get('currency'),
+                'is_partner': rec.get('is_partner'),
+                'is_published': rec.get('is_published'),
+                'university_views': rec.get('university_views'),
+                'scholarship_count': rec.get('scholarship_count'),
+                'is_gre_required': rec.get('is_gre_required'),
+                'tuition_affordability': rec.get('tuition_affordability'),
+                'university_quality': rec.get('university_quality'),
+                'country_popularity': rec.get('country_popularity'),
+                'similarity_score': rec.get('similarity_score'),
+                'relevance_score': rec.get('relevance_score')
+            }
+            transformed_recommendations.append(transformed_rec)
         
         # Calculate search duration
         search_duration = int((time.time() - start_time) * 1000)  # Convert to milliseconds
         
         # Update submission with results
         if 'submission' in locals():
-            submission.recommendations_count = len(recommendations)
-            submission.search_results = recommendations
+            submission.recommendations_count = len(transformed_recommendations)
+            submission.search_results = transformed_recommendations
             submission.search_duration_ms = search_duration
             submission.ip_address = get_client_ip(request)
             submission.user_agent = request.META.get('HTTP_USER_AGENT', '')
             submission.save()
         
         return Response({
-            'recommendations': recommendations,
+            'recommendations': transformed_recommendations,
             'search_duration_ms': search_duration,
             'submission_id': submission.id if 'submission' in locals() else None
         })
         
     except Exception as e:
-        print(f"Error in get_recommendations: {str(e)}")
+        logger.error(f"Error in get_recommendations: {str(e)}")
         return Response({
             'error': 'Failed to get recommendations',
             'details': str(e)
@@ -178,7 +221,7 @@ def get_available_options(request):
         return Response(serializer.data)
         
     except Exception as e:
-        print(f"Error in get_available_options: {str(e)}")
+        logger.error(f"Error in get_available_options: {str(e)}")
         return Response({
             'error': 'Failed to get available options',
             'details': str(e)
@@ -197,7 +240,7 @@ def get_user_submissions(request):
             'submissions': serializer.data
         })
     except Exception as e:
-        print(f"Error in get_user_submissions: {str(e)}")
+        logger.error(f"Error in get_user_submissions: {str(e)}")
         return Response({
             'error': 'Failed to get user submissions',
             'details': str(e)

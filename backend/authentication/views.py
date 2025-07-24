@@ -24,11 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 class UserRegistrationView(APIView):
-    """User registration endpoint"""
+    """Enhanced user registration endpoint with detailed error handling"""
     permission_classes = [AllowAny]
     
     def post(self, request):
-        """Register a new user"""
+        """Register a new user with comprehensive error handling"""
         try:
             serializer = UserRegistrationSerializer(data=request.data)
             if serializer.is_valid():
@@ -39,33 +39,46 @@ class UserRegistrationView(APIView):
                     token, created = Token.objects.get_or_create(user=user)
                     
                     # Log successful registration
-                    logger.info(f"New user registered: {user.email}")
+                    logger.info(f"New user registered successfully: {user.email}")
                     
                     return Response({
-                        'message': 'User registered successfully',
+                        'success': True,
+                        'message': 'Account created successfully! Welcome to UniFinder.',
                         'user': UserSerializer(user).data,
                         'token': token.key
                     }, status=status.HTTP_201_CREATED)
             else:
+                # Enhanced error response with field-specific errors
+                error_details = {}
+                for field, errors in serializer.errors.items():
+                    if isinstance(errors, list):
+                        error_details[field] = errors[0]  # Take first error for each field
+                    else:
+                        error_details[field] = str(errors)
+                
                 return Response({
-                    'message': 'Registration failed',
-                    'errors': serializer.errors
+                    'success': False,
+                    'message': 'Registration failed. Please check the errors below.',
+                    'errors': error_details,
+                    'error_type': 'validation_error'
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
             logger.error(f"Registration error: {str(e)}")
             return Response({
-                'message': 'Registration failed',
-                'error': str(e)
+                'success': False,
+                'message': 'Registration failed due to a server error. Please try again.',
+                'error': 'Internal server error',
+                'error_type': 'server_error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class UserLoginView(APIView):
-    """User login endpoint"""
+    """Enhanced user login endpoint with detailed error handling"""
     permission_classes = [AllowAny]
     
     def post(self, request):
-        """Login user"""
+        """Login user with comprehensive error handling"""
         try:
             serializer = UserLoginSerializer(data=request.data)
             if serializer.is_valid():
@@ -94,24 +107,37 @@ class UserLoginView(APIView):
                 profile.login_count += 1
                 profile.save()
                 
-                logger.info(f"User logged in: {user.email}")
+                logger.info(f"User logged in successfully: {user.email}")
                 
                 return Response({
-                    'message': 'Login successful',
+                    'success': True,
+                    'message': 'Login successful! Welcome back.',
                     'user': UserSerializer(user).data,
                     'token': token.key
                 }, status=status.HTTP_200_OK)
             else:
+                # Enhanced error response with field-specific errors
+                error_details = {}
+                for field, errors in serializer.errors.items():
+                    if isinstance(errors, list):
+                        error_details[field] = errors[0]  # Take first error for each field
+                    else:
+                        error_details[field] = str(errors)
+                
                 return Response({
-                    'message': 'Login failed',
-                    'errors': serializer.errors
+                    'success': False,
+                    'message': 'Login failed. Please check your credentials.',
+                    'errors': error_details,
+                    'error_type': 'authentication_error'
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
             logger.error(f"Login error: {str(e)}")
             return Response({
-                'message': 'Login failed',
-                'error': str(e)
+                'success': False,
+                'message': 'Login failed due to a server error. Please try again.',
+                'error': 'Internal server error',
+                'error_type': 'server_error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def get_client_ip(self, request):
@@ -125,11 +151,11 @@ class UserLoginView(APIView):
 
 
 class UserLogoutView(APIView):
-    """User logout endpoint"""
+    """Enhanced user logout endpoint"""
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
-        """Logout user"""
+        """Logout user with enhanced error handling"""
         try:
             # Delete token
             if hasattr(request.user, 'auth_token'):
@@ -138,40 +164,44 @@ class UserLogoutView(APIView):
             # Logout user
             logout(request)
             
-            logger.info(f"User logged out: {request.user.email}")
+            logger.info(f"User logged out successfully: {request.user.email}")
             
             return Response({
-                'message': 'Logout successful'
+                'success': True,
+                'message': 'Logout successful. You have been signed out.'
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
             logger.error(f"Logout error: {str(e)}")
             return Response({
-                'message': 'Logout failed',
-                'error': str(e)
+                'success': False,
+                'message': 'Logout failed. Please try again.',
+                'error': 'Internal server error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class UserProfileView(APIView):
-    """User profile management"""
+    """Enhanced user profile management"""
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        """Get user profile"""
+        """Get user profile with enhanced error handling"""
         try:
             user = request.user
             return Response({
+                'success': True,
                 'user': UserSerializer(user).data
             }, status=status.HTTP_200_OK)
         except Exception as e:
             logger.error(f"Profile get error: {str(e)}")
             return Response({
-                'message': 'Failed to get profile',
-                'error': str(e)
+                'success': False,
+                'message': 'Failed to retrieve profile. Please try again.',
+                'error': 'Internal server error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def put(self, request):
-        """Update user profile"""
+        """Update user profile with enhanced error handling"""
         try:
             user = request.user
             user_serializer = UserSerializer(user, data=request.data, partial=True)
@@ -181,38 +211,52 @@ class UserProfileView(APIView):
                 user_serializer.save()
                 profile_serializer.save()
                 
-                logger.info(f"Profile updated: {user.email}")
+                logger.info(f"Profile updated successfully: {user.email}")
                 
                 return Response({
-                    'message': 'Profile updated successfully',
+                    'success': True,
+                    'message': 'Profile updated successfully.',
                     'user': UserSerializer(user).data
                 }, status=status.HTTP_200_OK)
             else:
+                # Combine errors from both serializers
                 errors = {}
                 if not user_serializer.is_valid():
-                    errors.update(user_serializer.errors)
+                    for field, field_errors in user_serializer.errors.items():
+                        if isinstance(field_errors, list):
+                            errors[field] = field_errors[0]
+                        else:
+                            errors[field] = str(field_errors)
+                
                 if not profile_serializer.is_valid():
-                    errors.update(profile_serializer.errors)
+                    for field, field_errors in profile_serializer.errors.items():
+                        if isinstance(field_errors, list):
+                            errors[field] = field_errors[0]
+                        else:
+                            errors[field] = str(field_errors)
                 
                 return Response({
-                    'message': 'Profile update failed',
-                    'errors': errors
+                    'success': False,
+                    'message': 'Profile update failed. Please check the errors below.',
+                    'errors': errors,
+                    'error_type': 'validation_error'
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
             logger.error(f"Profile update error: {str(e)}")
             return Response({
-                'message': 'Profile update failed',
-                'error': str(e)
+                'success': False,
+                'message': 'Profile update failed due to a server error. Please try again.',
+                'error': 'Internal server error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class PasswordChangeView(APIView):
-    """Password change endpoint"""
+    """Enhanced password change endpoint"""
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
-        """Change user password"""
+        """Change user password with enhanced error handling"""
         try:
             serializer = PasswordChangeSerializer(data=request.data)
             if serializer.is_valid():
@@ -221,7 +265,12 @@ class PasswordChangeView(APIView):
                 # Check old password
                 if not user.check_password(serializer.validated_data['old_password']):
                     return Response({
-                        'message': 'Current password is incorrect'
+                        'success': False,
+                        'message': 'Password change failed.',
+                        'errors': {
+                            'old_password': 'Current password is incorrect. Please check your password and try again.'
+                        },
+                        'error_type': 'authentication_error'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
                 # Set new password
@@ -231,31 +280,43 @@ class PasswordChangeView(APIView):
                 # Delete all tokens to force re-login
                 Token.objects.filter(user=user).delete()
                 
-                logger.info(f"Password changed: {user.email}")
+                logger.info(f"Password changed successfully: {user.email}")
                 
                 return Response({
-                    'message': 'Password changed successfully. Please login again.'
+                    'success': True,
+                    'message': 'Password changed successfully. Please login with your new password.'
                 }, status=status.HTTP_200_OK)
             else:
+                # Enhanced error response
+                error_details = {}
+                for field, errors in serializer.errors.items():
+                    if isinstance(errors, list):
+                        error_details[field] = errors[0]
+                    else:
+                        error_details[field] = str(errors)
+                
                 return Response({
-                    'message': 'Password change failed',
-                    'errors': serializer.errors
+                    'success': False,
+                    'message': 'Password change failed. Please check the errors below.',
+                    'errors': error_details,
+                    'error_type': 'validation_error'
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
             logger.error(f"Password change error: {str(e)}")
             return Response({
-                'message': 'Password change failed',
-                'error': str(e)
+                'success': False,
+                'message': 'Password change failed due to a server error. Please try again.',
+                'error': 'Internal server error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class PasswordResetRequestView(APIView):
-    """Password reset request endpoint"""
+    """Enhanced password reset request endpoint"""
     permission_classes = [AllowAny]
     
     def post(self, request):
-        """Request password reset"""
+        """Request password reset with enhanced error handling"""
         try:
             serializer = PasswordResetRequestSerializer(data=request.data)
             if serializer.is_valid():
@@ -274,29 +335,41 @@ class PasswordResetRequestView(APIView):
                 logger.info(f"Password reset requested: {email}")
                 
                 return Response({
-                    'message': 'Password reset email sent',
+                    'success': True,
+                    'message': 'Password reset email sent. Please check your email for instructions.',
                     'token': reset_token  # Remove this in production
                 }, status=status.HTTP_200_OK)
             else:
+                # Enhanced error response
+                error_details = {}
+                for field, errors in serializer.errors.items():
+                    if isinstance(errors, list):
+                        error_details[field] = errors[0]
+                    else:
+                        error_details[field] = str(errors)
+                
                 return Response({
-                    'message': 'Password reset request failed',
-                    'errors': serializer.errors
+                    'success': False,
+                    'message': 'Password reset request failed. Please check the errors below.',
+                    'errors': error_details,
+                    'error_type': 'validation_error'
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
             logger.error(f"Password reset request error: {str(e)}")
             return Response({
-                'message': 'Password reset request failed',
-                'error': str(e)
+                'success': False,
+                'message': 'Password reset request failed due to a server error. Please try again.',
+                'error': 'Internal server error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class PasswordResetConfirmView(APIView):
-    """Password reset confirmation endpoint"""
+    """Enhanced password reset confirmation endpoint"""
     permission_classes = [AllowAny]
     
     def post(self, request):
-        """Confirm password reset"""
+        """Confirm password reset with enhanced error handling"""
         try:
             serializer = PasswordResetConfirmSerializer(data=request.data)
             if serializer.is_valid():
@@ -309,7 +382,12 @@ class PasswordResetConfirmView(APIView):
                     )
                 except User.DoesNotExist:
                     return Response({
-                        'message': 'Invalid or expired reset token'
+                        'success': False,
+                        'message': 'Password reset failed.',
+                        'errors': {
+                            'token': 'Invalid or expired reset token. Please request a new password reset.'
+                        },
+                        'error_type': 'token_error'
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
                 # Set new password
@@ -321,59 +399,76 @@ class PasswordResetConfirmView(APIView):
                 # Delete all tokens
                 Token.objects.filter(user=user).delete()
                 
-                logger.info(f"Password reset completed: {user.email}")
+                logger.info(f"Password reset completed successfully: {user.email}")
                 
                 return Response({
+                    'success': True,
                     'message': 'Password reset successful. Please login with your new password.'
                 }, status=status.HTTP_200_OK)
             else:
+                # Enhanced error response
+                error_details = {}
+                for field, errors in serializer.errors.items():
+                    if isinstance(errors, list):
+                        error_details[field] = errors[0]
+                    else:
+                        error_details[field] = str(errors)
+                
                 return Response({
-                    'message': 'Password reset confirmation failed',
-                    'errors': serializer.errors
+                    'success': False,
+                    'message': 'Password reset confirmation failed. Please check the errors below.',
+                    'errors': error_details,
+                    'error_type': 'validation_error'
                 }, status=status.HTTP_400_BAD_REQUEST)
                 
         except Exception as e:
             logger.error(f"Password reset confirmation error: {str(e)}")
             return Response({
-                'message': 'Password reset confirmation failed',
-                'error': str(e)
+                'success': False,
+                'message': 'Password reset confirmation failed due to a server error. Please try again.',
+                'error': 'Internal server error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class LoginHistoryView(APIView):
-    """Login history endpoint"""
+    """Enhanced login history endpoint"""
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        """Get user login history"""
+        """Get user login history with enhanced error handling"""
         try:
             history = LoginHistory.objects.filter(user=request.user)[:10]
             serializer = LoginHistorySerializer(history, many=True)
             
             return Response({
+                'success': True,
                 'login_history': serializer.data
             }, status=status.HTTP_200_OK)
             
         except Exception as e:
             logger.error(f"Login history error: {str(e)}")
             return Response({
-                'message': 'Failed to get login history',
-                'error': str(e)
+                'success': False,
+                'message': 'Failed to retrieve login history. Please try again.',
+                'error': 'Internal server error'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def check_auth_status(request):
-    """Check authentication status"""
+    """Enhanced authentication status check"""
     try:
         return Response({
+            'success': True,
             'authenticated': True,
             'user': UserSerializer(request.user).data
         }, status=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Auth status check error: {str(e)}")
         return Response({
+            'success': False,
             'authenticated': False,
-            'error': str(e)
+            'message': 'Authentication check failed.',
+            'error': 'Internal server error'
         }, status=status.HTTP_401_UNAUTHORIZED)
