@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { GiCash, GiGraduateCap } from "react-icons/gi";
 import { IoIosArrowDown } from "react-icons/io";
-import { FiBook, FiGlobe } from "react-icons/fi";
-import { BsFileEarmarkSlides } from "react-icons/bs";
+import { FiBook } from "react-icons/fi";
 import apiService from "../services/api";
 import type { UserPreferences, UniversityRecommendation, AvailableOptions } from "../services/api";
 import SearchableDropdown from "./SearchableDropdown";

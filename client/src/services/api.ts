@@ -100,15 +100,8 @@ export interface UniversityRecommendation {
 
 // API Service
 class ApiService {
-  private baseURL: string;
-
   constructor() {
-    this.baseURL = API_BASE_URL;
-  }
-
-  private getAuthHeaders() {
-    const token = localStorage.getItem('auth_token');
-    return token ? { 'Authorization': `Token ${token}` } : {};
+    // API base URL is configured via axios defaults
   }
 
   async getAvailableOptions(): Promise<AvailableOptions> {
